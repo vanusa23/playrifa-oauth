@@ -31,8 +31,6 @@
       width: 30px;
       height: 30px;
       animation: spin 1s linear infinite;
-      margin-left: auto;
-      margin-right: auto;
     }
     @keyframes spin {
       0% { transform: rotate(0deg); }
