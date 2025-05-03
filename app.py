@@ -39,7 +39,8 @@ def criar_pedido():
         ]
         missing_fields = [field for field in required_fields_common if field not in data or not data[field]]
         if missing_fields:
-            return jsonify({"error": f"Campos obrigatórios ausentes: {", ".join(missing_fields)}"}), 400
+            error_message = "Campos obrigatórios ausentes: " + ", ".join(missing_fields)
+            return jsonify({"error": error_message}), 400
 
         valor = data["valor"]
         # Verifica se é um pedido com split (presença de vendedorRecipientId)
