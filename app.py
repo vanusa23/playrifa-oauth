@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 if not firebase_admin._apps:
     cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
     firebase_admin.initialize_app(cred)
-db = firestore.client()
 
+db = firestore.client()
 app = Flask(__name__)
 
 @app.route("/")
@@ -25,15 +25,16 @@ def webhook_pagarme():
         event_type = data.get("type")
         charge_data = data.get("data", {})
         metadata = charge_data.get("metadata", {})
-        user_id = metadata.get("userId")
+        user_id = metadata.get("userId")  # Vem do metadata no momento da criação do pedido
 
-        if event_type == "charge.paid":
+        # Verifica se o evento é de pagamento confirmado
+        if event_type in ["charge.paid", "order.paid"]:
             charge_id = charge_data.get("id")
-            order_id = charge_data.get("order", {}).get("id")
+            order_id = charge_data.get("order", {}).get("id") or charge_data.get("id")
 
             print(f"✅ Pagamento confirmado para pedido {order_id}, charge {charge_id}")
 
-            # 🧠 Ativar assinatura no Firestore
+            # Ativa assinatura no Firestore
             if user_id:
                 validade = datetime.utcnow() + timedelta(days=30)
                 db.collection("users").document(user_id).update({
@@ -44,7 +45,7 @@ def webhook_pagarme():
             else:
                 print("⚠️ UID ausente no metadata. Assinatura não foi ativada.")
 
-            # (Opcional) Log do pagamento
+            # Salva log de pagamento
             db.collection("pagamentos_confirmados").document(order_id).set({
                 "charge_id": charge_id,
                 "order_id": order_id,
