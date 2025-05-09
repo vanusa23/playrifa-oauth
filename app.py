@@ -2,19 +2,13 @@ import os
 from flask import Flask, request, jsonify
 import firebase_admin
 from firebase_admin import credentials, firestore
+from datetime import datetime, timedelta
 
 # Inicialização do Firebase
 if not firebase_admin._apps:
     cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
     firebase_admin.initialize_app(cred)
 db = firestore.client()
-
-# Carregar ID do recebedor da plataforma via variável de ambiente
-PLATFORM_RECIPIENT_ID = os.getenv("PLATFORM_RECIPIENT_ID")
-if not PLATFORM_RECIPIENT_ID:
-    print("❌ ERRO CRÍTICO: Variável de ambiente PLATFORM_RECIPIENT_ID não definida!")
-else:
-    print(f"🔍 PLATFORM_RECIPIENT_ID carregado: {PLATFORM_RECIPIENT_ID}")
 
 app = Flask(__name__)
 
@@ -28,29 +22,43 @@ def webhook_pagarme():
     print("📦 Webhook recebido:", data)
 
     try:
-        # Verifica se é um evento de pagamento confirmado
-        if data["type"] == "charge.paid":
-            charge_id = data["data"]["id"]
-            order_id = data["data"]["order"]["id"]
+        event_type = data.get("type")
+        charge_data = data.get("data", {})
+        metadata = charge_data.get("metadata", {})
+        user_id = metadata.get("userId")
 
-            print(f"✅ Pagamento confirmado para o pedido {order_id} (charge {charge_id})")
+        if event_type == "charge.paid":
+            charge_id = charge_data.get("id")
+            order_id = charge_data.get("order", {}).get("id")
 
-            # Aqui você pode salvar no Firestore (exemplo)
-            doc_ref = db.collection("pagamentos_confirmados").document(order_id)
-            doc_ref.set({
+            print(f"✅ Pagamento confirmado para pedido {order_id}, charge {charge_id}")
+
+            # 🧠 Ativar assinatura no Firestore
+            if user_id:
+                validade = datetime.utcnow() + timedelta(days=30)
+                db.collection("users").document(user_id).update({
+                    "assinaturaAtiva": True,
+                    "assinaturaValidaAte": validade.isoformat()
+                })
+                print(f"🔓 Assinatura ativada com validade até {validade} para UID {user_id}")
+            else:
+                print("⚠️ UID ausente no metadata. Assinatura não foi ativada.")
+
+            # (Opcional) Log do pagamento
+            db.collection("pagamentos_confirmados").document(order_id).set({
                 "charge_id": charge_id,
                 "order_id": order_id,
+                "user_id": user_id,
                 "timestamp": firestore.SERVER_TIMESTAMP
             })
 
             return jsonify({"status": "sucesso", "order_id": order_id}), 200
 
-        else:
-            print("⚠️ Evento não tratado:", data["type"])
-            return jsonify({"status": "ignorado"}), 200
+        print(f"⚠️ Evento ignorado: {event_type}")
+        return jsonify({"status": "ignorado"}), 200
 
     except Exception as e:
-        print("❌ Erro ao processar webhook:", e)
+        print("❌ Erro no webhook:", e)
         return jsonify({"erro": str(e)}), 500
 
 if __name__ == "__main__":
