@@ -25,7 +25,6 @@ def webhook_pagarme():
         event_type = data.get("type")
         charge_data = data.get("data", {})
         metadata = charge_data.get("metadata", {})
-        user_id = metadata.get("userId")  # Vem do metadata no momento da criação do pedido
 
         # Verifica se o evento é de pagamento confirmado
         if event_type in ["charge.paid", "order.paid"]:
@@ -35,21 +34,17 @@ def webhook_pagarme():
             print(f"✅ Pagamento confirmado para pedido {order_id}, charge {charge_id}")
 
             # Ativa assinatura no Firestore
-            if user_id:
-                validade = datetime.utcnow() + timedelta(days=30)
-                db.collection("users").document(user_id).update({
-                    "assinaturaAtiva": True,
-                    "assinaturaValidaAte": validade.isoformat()
-                })
-                print(f"🔓 Assinatura ativada com validade até {validade} para UID {user_id}")
-            else:
-                print("⚠️ UID ausente no metadata. Assinatura não foi ativada.")
+            validade = datetime.utcnow() + timedelta(days=30)
+            db.collection("assinaturas").document(order_id).update({
+                "ativo": True,
+                "assinaturaValidaAte": validade.isoformat()
+            })
+            print(f"🔓 Assinatura ativada com validade até {validade} para pedido {order_id}")
 
             # Salva log de pagamento
             db.collection("pagamentos_confirmados").document(order_id).set({
                 "charge_id": charge_id,
                 "order_id": order_id,
-                "user_id": user_id,
                 "timestamp": firestore.SERVER_TIMESTAMP
             })
 
