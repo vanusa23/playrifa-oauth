@@ -1,12 +1,18 @@
 import os
+import json
 from flask import Flask, request, jsonify
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
 
-# Inicialização do Firebase
+# Inicialização do Firebase usando variável de ambiente
 if not firebase_admin._apps:
-    cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
+    firebase_cred_json = os.getenv("FIREBASE_CREDENTIALS")
+    if not firebase_cred_json:
+        raise ValueError("❌ Variável de ambiente FIREBASE_CREDENTIALS não encontrada.")
+    
+    cred_dict = json.loads(firebase_cred_json)
+    cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
