@@ -4,18 +4,20 @@ from flask import Flask, request, jsonify
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
+from threading import Thread
 
+# Logs para checar o cred_path
 print("🔍 Listando conteúdo de /etc/secrets/:")
 try:
     print(os.listdir('/etc/secrets'))
 except Exception as e:
     print(f"❌ Erro ao listar /etc/secrets/: {e}")
 
+# Firebase
 if not firebase_admin._apps:
     cred_path = "/etc/secrets/firebase_credentials.json"
     print(f"🛠 Tentando acessar cred_path: {cred_path}")
     if not os.path.exists(cred_path):
-        print(f"❌ Arquivo {cred_path} NÃO encontrado!")
         raise FileNotFoundError(f"Arquivo de credenciais não encontrado em: {cred_path}")
     cred = credentials.Certificate(cred_path)
     firebase_admin.initialize_app(cred)
@@ -26,39 +28,42 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "🔥 Webhook do PlayRifa ativo com sucesso!", 200
+    return "🔥 Webhook do PlayRifa está online!", 200
 
 @app.route("/pagarme", methods=["POST"])
 def webhook_pagarme():
     data = request.get_json()
     print("📦 Webhook recebido:", json.dumps(data, indent=2))
+    print("🔐 Headers recebidos:", dict(request.headers))
 
+    # Retorna imediatamente para não dar timeout no Pagar.me
+    Thread(target=processar_pagamento, args=(data,)).start()
+    return jsonify({"status": "recebido"}), 200
+
+def processar_pagamento(data):
     try:
         event_type = data.get("type")
         charge_data = data.get("data", {})
-        order_data = charge_data.get("order", {})
-        metadata = charge_data.get("metadata") or order_data.get("metadata", {})
+        metadata = charge_data.get("metadata", {})
 
         if event_type in ["charge.paid", "order.paid"]:
             charge_id = charge_data.get("id")
-            order_id = order_data.get("id") or charge_data.get("id")
+            order_id = charge_data.get("order", {}).get("id") or charge_data.get("id")
 
             print(f"✅ Pagamento confirmado para pedido {order_id}, charge {charge_id}")
-            print(f"🔍 Metadata recebido: {metadata}")
+            print("📎 Metadata recebido:", metadata)
 
             validade = datetime.utcnow() + timedelta(days=30)
-
             update_data = {
                 "ativo": True,
                 "assinaturaValidaAte": validade.isoformat(),
                 "statusPagamento": event_type,
                 "timestamp": firestore.SERVER_TIMESTAMP,
                 "email": charge_data.get("customer", {}).get("email", "email_padrao@exemplo.com"),
-                "uid": metadata.get("userId", metadata.get("user_id", "uid_padrao"))  # tenta ambos
+                "uid": metadata.get("user_id", "uid_padrao")
             }
 
-            doc_ref = db.collection("assinaturas").document(order_id)
-            doc_ref.set(update_data, merge=True)
+            db.collection("assinaturas").document(order_id).set(update_data, merge=True)
             print(f"🔄 Assinatura {order_id} atualizada com sucesso.")
 
             db.collection("pagamentos_confirmados").document(order_id).set({
@@ -69,16 +74,13 @@ def webhook_pagarme():
                 "payload_recebido": data
             })
 
-            return jsonify({"status": "sucesso", "order_id": order_id}), 200
-
-        print(f"⚠️ Evento ignorado: {event_type}")
-        return jsonify({"status": "ignorado"}), 200
+        else:
+            print(f"⚠️ Evento ignorado: {event_type}")
 
     except Exception as e:
-        print("❌ Erro no webhook:", e)
+        print("❌ Erro no processamento assíncrono:", e)
         import traceback
         traceback.print_exc()
-        return jsonify({"erro": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), debug=False)
