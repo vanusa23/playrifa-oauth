@@ -5,14 +5,24 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
 
-# Lê o arquivo secreto no caminho correto para Render
+# Logs de depuração para verificar se o arquivo secreto está visível
+print("🔍 Listando conteúdo de /etc/secrets/:")
+try:
+    print(os.listdir('/etc/secrets'))
+except Exception as e:
+    print(f"❌ Erro ao listar /etc/secrets/: {e}")
+
+# Inicialização do Firebase com verificação explícita
 if not firebase_admin._apps:
     cred_path = "/etc/secrets/firebase_credentials.json"
+    print(f"🛠 Tentando acessar cred_path: {cred_path}")
     if not os.path.exists(cred_path):
+        print(f"❌ Arquivo {cred_path} NÃO encontrado após verificação!")
         raise FileNotFoundError(f"Arquivo de credenciais não encontrado em: {cred_path}")
 
     cred = credentials.Certificate(cred_path)
     firebase_admin.initialize_app(cred)
+    print("✅ Firebase inicializado com sucesso.")
 
 db = firestore.client()
 app = Flask(__name__)
