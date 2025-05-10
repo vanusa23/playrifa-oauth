@@ -5,15 +5,13 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
 
-# Inicializa o Firebase com a variável de ambiente
+# Lê o arquivo secreto no caminho correto para Render
 if not firebase_admin._apps:
-    firebase_cred_json = os.environ.get("FIREBASE_CREDENTIALS")
+    cred_path = "/etc/secrets/firebase_credentials.json"
+    if not os.path.exists(cred_path):
+        raise FileNotFoundError(f"Arquivo de credenciais não encontrado em: {cred_path}")
 
-    if firebase_cred_json is None:
-        raise ValueError("❌ Variável FIREBASE_CREDENTIALS não está definida no ambiente!")
-
-    cred_dict = json.loads(firebase_cred_json)
-    cred = credentials.Certificate(cred_dict)
+    cred = credentials.Certificate(cred_path)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
