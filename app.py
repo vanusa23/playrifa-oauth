@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
 
-# Inicialização do Firebase direto do arquivo secreto do Render
+# Inicializa Firebase
 if not firebase_admin._apps:
     cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
     firebase_admin.initialize_app(cred)
@@ -26,22 +26,27 @@ def webhook_pagarme():
         charge_data = data.get("data", {})
         metadata = charge_data.get("metadata", {})
 
-        # Verifica se o evento é de pagamento confirmado
         if event_type in ["charge.paid", "order.paid"]:
             charge_id = charge_data.get("id")
             order_id = charge_data.get("order", {}).get("id") or charge_data.get("id")
 
             print(f"✅ Pagamento confirmado para pedido {order_id}, charge {charge_id}")
 
-            # Ativa assinatura no Firestore
             validade = datetime.utcnow() + timedelta(days=30)
-            db.collection("assinaturas").document(order_id).update({
-                "ativo": True,
-                "assinaturaValidaAte": validade.isoformat()
-            })
-            print(f"🔓 Assinatura ativada com validade até {validade} para pedido {order_id}")
 
-            # Salva log de pagamento
+            # Busca por campo orderId (não por ID do doc)
+            query = db.collection("assinaturas").where("orderId", "==", order_id).get()
+            if not query:
+                print(f"❌ Nenhum documento encontrado com orderId = {order_id}")
+                return jsonify({"erro": "Documento não encontrado"}), 404
+
+            for doc in query:
+                doc.reference.update({
+                    "ativo": True,
+                    "assinaturaValidaAte": validade.isoformat()
+                })
+                print(f"🔓 Assinatura ativada com validade até {validade} para doc {doc.id}")
+
             db.collection("pagamentos_confirmados").document(order_id).set({
                 "charge_id": charge_id,
                 "order_id": order_id,
