@@ -5,11 +5,10 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
 
-# Lê o JSON do Firebase a partir de uma variável de ambiente
-firebase_cred_json = os.getenv("FIREBASE_CREDENTIALS")
-
+# Inicializa o Firebase com as credenciais do ambiente
 if not firebase_admin._apps:
-    cred_dict = json.loads(firebase_cred_json)
+    firebase_cred_json = os.environ.get("FIREBASE_CREDENTIALS")
+    cred_dict = json.loads(firebase_cred_json)  # <-- Erro acontecia aqui pois estava None
     cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred)
 
