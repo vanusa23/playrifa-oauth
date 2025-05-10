@@ -5,21 +5,18 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
 
-# Logs de depuração para verificar se o arquivo secreto está visível
 print("🔍 Listando conteúdo de /etc/secrets/:")
 try:
     print(os.listdir('/etc/secrets'))
 except Exception as e:
     print(f"❌ Erro ao listar /etc/secrets/: {e}")
 
-# Inicialização do Firebase com verificação explícita
 if not firebase_admin._apps:
     cred_path = "/etc/secrets/firebase_credentials.json"
     print(f"🛠 Tentando acessar cred_path: {cred_path}")
     if not os.path.exists(cred_path):
-        print(f"❌ Arquivo {cred_path} NÃO encontrado após verificação!")
+        print(f"❌ Arquivo {cred_path} NÃO encontrado!")
         raise FileNotFoundError(f"Arquivo de credenciais não encontrado em: {cred_path}")
-
     cred = credentials.Certificate(cred_path)
     firebase_admin.initialize_app(cred)
     print("✅ Firebase inicializado com sucesso.")
@@ -34,29 +31,30 @@ def index():
 @app.route("/pagarme", methods=["POST"])
 def webhook_pagarme():
     data = request.get_json()
-    print("📦 Webhook recebido:", data)
+    print("📦 Webhook recebido:", json.dumps(data, indent=2))
 
     try:
         event_type = data.get("type")
         charge_data = data.get("data", {})
-        metadata = charge_data.get("metadata", {})
+        order_data = charge_data.get("order", {})
+        metadata = charge_data.get("metadata") or order_data.get("metadata", {})
 
         if event_type in ["charge.paid", "order.paid"]:
             charge_id = charge_data.get("id")
-            order_id = charge_data.get("order", {}).get("id") or charge_data.get("id")
+            order_id = order_data.get("id") or charge_data.get("id")
 
             print(f"✅ Pagamento confirmado para pedido {order_id}, charge {charge_id}")
+            print(f"🔍 Metadata recebido: {metadata}")
 
             validade = datetime.utcnow() + timedelta(days=30)
 
-            # Atualiza ou cria a assinatura com merge=True
             update_data = {
                 "ativo": True,
                 "assinaturaValidaAte": validade.isoformat(),
                 "statusPagamento": event_type,
                 "timestamp": firestore.SERVER_TIMESTAMP,
                 "email": charge_data.get("customer", {}).get("email", "email_padrao@exemplo.com"),
-                "uid": metadata.get("user_id", "uid_padrao")
+                "uid": metadata.get("userId", metadata.get("user_id", "uid_padrao"))  # tenta ambos
             }
 
             doc_ref = db.collection("assinaturas").document(order_id)
