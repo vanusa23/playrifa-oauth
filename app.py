@@ -1,12 +1,16 @@
 import os
+import json
 from flask import Flask, request, jsonify
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta
 
-# Inicializa Firebase
+# Lê o JSON do Firebase a partir de uma variável de ambiente
+firebase_cred_json = os.getenv("FIREBASE_CREDENTIALS")
+
 if not firebase_admin._apps:
-    cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
+    cred_dict = json.loads(firebase_cred_json)
+    cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
@@ -33,19 +37,10 @@ def webhook_pagarme():
             print(f"✅ Pagamento confirmado para pedido {order_id}, charge {charge_id}")
 
             validade = datetime.utcnow() + timedelta(days=30)
-
-            # Busca por campo orderId (não por ID do doc)
-            query = db.collection("assinaturas").where("orderId", "==", order_id).get()
-            if not query:
-                print(f"❌ Nenhum documento encontrado com orderId = {order_id}")
-                return jsonify({"erro": "Documento não encontrado"}), 404
-
-            for doc in query:
-                doc.reference.update({
-                    "ativo": True,
-                    "assinaturaValidaAte": validade.isoformat()
-                })
-                print(f"🔓 Assinatura ativada com validade até {validade} para doc {doc.id}")
+            db.collection("assinaturas").document(order_id).update({
+                "ativo": True,
+                "assinaturaValidaAte": validade.isoformat()
+            })
 
             db.collection("pagamentos_confirmados").document(order_id).set({
                 "charge_id": charge_id,
